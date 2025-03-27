@@ -14,7 +14,11 @@ class SecurityManager:
         self.kdf_iterations = 100000  # 100k iterations recommended by NIST
     
     def generate_keys(self):
-        """Generate AES-256 and HMAC keys with secure memory management"""
+        """Generate AES-256 and HMAC keys with secure memory management
+        
+        Raises:
+            SecurityError: If key generation fails
+        """
         try:
             # Use mutable bytearrays for sensitive data
             salt = bytearray(get_random_bytes(32))
@@ -46,7 +50,14 @@ class SecurityManager:
             raise SecurityError(f"Key generation failed: {str(e)}")
 
     def _secure_wipe(self, data):
-        """Military-grade memory sanitization for mutable buffers"""
+        """Military-grade memory sanitization for mutable buffers
+        
+        Args:
+            data: The sensitive data to wipe (bytearray)
+            
+        Raises:
+            TypeError: If immutable bytes are passed instead of bytearray
+        """
         if isinstance(data, bytearray):
             for i in range(len(data)):
                 data[i] = 0

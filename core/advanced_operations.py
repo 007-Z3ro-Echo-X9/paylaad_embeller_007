@@ -16,6 +16,23 @@ class AdvancedOperations:
             b"\x89PNG\r\n\x1a\n",  # PNG
             b"MZ\x90\x00"         # EXE
         ]
+            # In AdvancedOperations class
+    SUPPORTED_IMAGE_FORMATS = {
+        'JPEG': b'\xFF\xD8',
+        'PNG': b'\x89PNG',
+        'BMP': b'BM',
+        'GIF': b'GIF',
+        'WEBP': b'RIFF....WEBP'
+    }
+
+    def validate_image(self, path):
+        """Check if file is actually an image"""
+        try:
+            with open(path, 'rb') as f:
+                header = f.read(12)
+                return any(header.startswith(sig) for sig in self.SUPPORTED_IMAGE_FORMATS.values())
+        except:
+            return False
 
     def enable_anti_forensics(self):
         """Enable anti-forensic countermeasures"""
